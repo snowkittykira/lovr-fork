@@ -8,6 +8,8 @@
 
 #ifdef LOVR_USE_GLFW
 #include "os_glfw.h"
+#elif LOVR_USE_SDL
+#include "os_sdl.h"
 #else
 #include <linux/input.h>
 #include <xcb/xcb.h>
@@ -56,6 +58,7 @@ bool os_init(void) {
 void os_destroy(void) {
 #ifdef LOVR_USE_GLFW
   glfwTerminate();
+#elif LOVR_USE_SDL
 #else
   free(state.deleteWindow);
   if (state.hiddenCursor) xcb_free_cursor(state.connection, state.hiddenCursor);
@@ -99,7 +102,7 @@ void os_request_permission(os_permission permission) {
   //
 }
 
-#ifndef LOVR_USE_GLFW
+#if !defined(LOVR_USE_GLFW) && !defined(LOVR_USE_SDL)
 const char* os_get_clipboard_text(void) {
   return NULL; // TODO
 }
@@ -138,7 +141,7 @@ void os_on_permission(fn_permission* callback) {
   //
 }
 
-#ifndef LOVR_USE_GLFW
+#if !defined(LOVR_USE_GLFW) && !defined(LOVR_USE_SDL)
 static os_key convertKey(uint8_t keycode) {
   switch (keycode - 8) {
     case KEY_ESC: return OS_KEY_ESCAPE;

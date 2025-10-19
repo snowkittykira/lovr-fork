@@ -2318,7 +2318,9 @@ bool lovrGraphicsGetWindowTexture(Texture** texture) {
       .height = height,
       .vsync = vsync,
       .hdr = state.config.hdr,
-#if defined(_WIN32)
+#if defined(LOVR_USE_SDL)
+      .sdl.window = os_get_sdl_window()
+#elif defined(_WIN32)
       .win32.window = os_get_win32_window(),
       .win32.instance = os_get_win32_instance()
 #elif defined(__APPLE__)

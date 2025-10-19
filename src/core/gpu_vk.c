@@ -3,6 +3,10 @@
 #include <threads.h>
 #include <stdatomic.h>
 
+#ifdef LOVR_USE_SDL
+#include <SDL3/SDL_vulkan.h>
+#endif
+
 #ifdef _WIN32
 #define THREAD_LOCAL __declspec(thread)
 #define WIN32_LEAN_AND_MEAN
@@ -771,7 +775,12 @@ bool gpu_surface_init(gpu_surface_info* info) {
 
   gpu_surface* surface = &state.surface;
 
-#if defined(_WIN32)
+#if defined(LOVR_USE_SDL)
+  if(!SDL_Vulkan_CreateSurface((SDL_Window*) info->sdl.window, state.instance, NULL, &surface->handle)) {
+    //printf("%s\n", SDL_GetError());
+    return false;
+  }
+#elif defined(_WIN32)
   VkWin32SurfaceCreateInfoKHR surfaceInfo = {
     .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
     .hinstance = (HINSTANCE) info->win32.instance,
@@ -2623,7 +2632,9 @@ bool gpu_init(gpu_config* config) {
       { "VK_EXT_debug_utils", config->debug, &state.extensions.debug },
       { "VK_EXT_swapchain_colorspace", true, &state.extensions.colorspace },
       { "VK_KHR_surface", true, &state.extensions.surface },
-#if defined(_WIN32)
+#if defined(LOVR_USE_SDL)
+      { "VK_KHR_xlib_surface", true, &state.extensions.surfaceOS },
+#elif defined(_WIN32)
       { "VK_KHR_win32_surface", true, &state.extensions.surfaceOS },
 #elif defined(__APPLE__)
       { "VK_EXT_metal_surface", true, &state.extensions.surfaceOS },

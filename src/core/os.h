@@ -211,3 +211,5 @@ uintptr_t os_get_ca_metal_layer(void);
 
 uintptr_t os_get_xcb_connection(void);
 uintptr_t os_get_xcb_window(void);
+
+uintptr_t os_get_sdl_window(void);
