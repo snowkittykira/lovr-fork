@@ -274,7 +274,7 @@ static void startImageJob(ModelData* model, ImageJob* jobs, uint32_t index, gltf
   jobs[index].handle = job_start(loadImage, &jobs[index]);
 }
 
-static size_t typeSizes[] = {
+static uint32_t typeSizes[] = {
   [I8] = 1,
   [U8] = 1,
   [I16] = 2,
@@ -753,6 +753,7 @@ bool lovrModelDataInitGltf(ModelData** result, Blob* source, ModelDataIO* io) {
                 uint32_t index = NOM_U32(json, token);
                 indexCount = accessors[index].count;
                 meta->indexSize = MAX(meta->indexSize, typeSizes[accessors[index].type]);
+                meta->indexSize = MAX(meta->indexSize, 2); // U8 indices aren't supported
                 indexed = true;
               } else if (STR_EQ(key, "targets")) {
                 lovrAssertGoto(fail, blendShapeCount == 0 || blendShapeCount == token->size, "Model has inconsistent blend shape counts");
@@ -797,7 +798,7 @@ bool lovrModelDataInitGltf(ModelData** result, Blob* source, ModelDataIO* io) {
   }
 
   // Count keyframes
-  for (uint32_t i = 0; i < animationSamplerCount; i++) {
+  for (int i = 0; i < animationSamplerCount; i++) {
     gltfAccessor* times = &accessors[animationSamplers[i].input];
     gltfAccessor* values = &accessors[animationSamplers[i].output];
     meta->keyframeDataCount += times->count;
@@ -884,7 +885,7 @@ bool lovrModelDataInitGltf(ModelData** result, Blob* source, ModelDataIO* io) {
 
   // Accessors
   if (info.accessors) {
-    for (uint32_t i = 0; i < info.accessors->size; i++) {
+    for (int i = 0; i < info.accessors->size; i++) {
       gltfAccessor* accessor = &accessors[i];
       gltfBufferView* buffer = &buffers[accessor->bufferView];
       accessors[i].data = buffer->data + accessor->offset;
