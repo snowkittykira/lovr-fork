@@ -32,6 +32,7 @@ static struct {
   xcb_cursor_t hiddenCursor;
   xcb_intern_atom_reply_t* deleteWindow;
   fn_quit* onQuit;
+  fn_visible* onVisible;
   fn_focus* onFocus;
   fn_resize* onResize;
   fn_key* onKey;
@@ -48,6 +49,8 @@ static struct {
   int16_t mouseY;
   int16_t grabX;
   int16_t grabY;
+  bool visible;
+  bool focused;
 } state;
 #endif
 
@@ -241,6 +244,7 @@ void os_poll_events(void) {
     xcb_ge_generic_event_t* generic;
     xcb_client_message_event_t* message;
     xcb_configure_notify_event_t* configure;
+    xcb_map_notify_event_t* map;
     xcb_focus_in_event_t* focus;
     xcb_key_press_event_t* key;
     xcb_button_press_event_t* mouse;
@@ -344,10 +348,17 @@ void os_poll_events(void) {
         }
         break;
 
+      case XCB_MAP_NOTIFY:
+      case XCB_UNMAP_NOTIFY:
+        state.visible = type == XCB_MAP_NOTIFY;
+        if (state.onVisible) state.onVisible(state.visible);
+        break;
+
       case XCB_FOCUS_IN:
       case XCB_FOCUS_OUT:
         if (event.focus->mode == XCB_NOTIFY_MODE_GRAB || event.focus->mode == XCB_NOTIFY_MODE_UNGRAB) break;
-        if (state.onFocus) state.onFocus(type == XCB_FOCUS_IN);
+        state.focused = type == XCB_FOCUS_IN;
+        if (state.onFocus) state.onFocus(state.focused);
         break;
 
       default:
@@ -371,6 +382,10 @@ void os_poll_events(void) {
 
 void os_on_quit(fn_quit* callback) {
   state.onQuit = callback;
+}
+
+void os_on_visible(fn_visible* callback) {
+  state.onVisible = callback;
 }
 
 void os_on_focus(fn_focus* callback) {
@@ -461,11 +476,13 @@ bool os_window_open(const os_window_config* config) {
 
   state.screen = xcb_setup_roots_iterator(xcb_get_setup(state.connection)).data;
 
+  bool fullscreen = (config->width == 0 && config->height == 0) || config->fullscreen;
+
   uint8_t depth = XCB_COPY_FROM_PARENT;
   state.window = xcb_generate_id(state.connection);
   xcb_window_t parent = state.screen->root;
-  uint16_t w = config->width == 0 ? state.screen->width_in_pixels : config->width;
-  uint16_t h = config->height == 0 ? state.screen->height_in_pixels : config->height;
+  uint16_t w = fullscreen ? state.screen->width_in_pixels : config->width;
+  uint16_t h = fullscreen ? state.screen->height_in_pixels : config->height;
   uint16_t border = 0;
   xcb_window_class_t class = XCB_WINDOW_CLASS_INPUT_OUTPUT;
   xcb_visualid_t visual = state.screen->root_visual;
@@ -489,8 +506,8 @@ bool os_window_open(const os_window_config* config) {
   // Close event
   xcb_intern_atom_cookie_t protocols = xcb_intern_atom(state.connection, 1, 12, "WM_PROTOCOLS");
   xcb_intern_atom_cookie_t delete = xcb_intern_atom(state.connection, 1, 16, "WM_DELETE_WINDOW");
-  xcb_intern_atom_reply_t* protocolReply = xcb_intern_atom_reply(state.connection, protocols, 0);
-  xcb_intern_atom_reply_t* deleteReply = xcb_intern_atom_reply(state.connection, delete, 0);
+  xcb_intern_atom_reply_t* protocolReply = xcb_intern_atom_reply(state.connection, protocols, NULL);
+  xcb_intern_atom_reply_t* deleteReply = xcb_intern_atom_reply(state.connection, delete, NULL);
   xcb_change_property(state.connection, XCB_PROP_MODE_REPLACE, state.window, protocolReply->atom, 4, 32, 1, &deleteReply->atom);
   state.deleteWindow = deleteReply;
   free(protocolReply);
@@ -522,6 +539,15 @@ bool os_window_open(const os_window_config* config) {
     xcb_change_property(state.connection, XCB_PROP_MODE_REPLACE, state.window, XCB_ATOM_WM_NORMAL_HINTS, XCB_ATOM_WM_SIZE_HINTS, 32, sizeof(hints) / 4, &hints);
   }
 
+  // Fullscreen
+  if (fullscreen) {
+    xcb_intern_atom_cookie_t wmState = xcb_intern_atom(state.connection, 0, 13, "_NET_WM_STATE");
+    xcb_intern_atom_cookie_t wmFullscreen = xcb_intern_atom(state.connection, 0, 24, "_NET_WM_STATE_FULLSCREEN");
+    xcb_intern_atom_reply_t* stateReply = xcb_intern_atom_reply(state.connection, wmState, NULL);
+    xcb_intern_atom_reply_t* fullscreenReply = xcb_intern_atom_reply(state.connection, wmFullscreen, NULL);
+    xcb_change_property(state.connection, XCB_PROP_MODE_REPLACE, state.window, stateReply->atom, 4, 32, 1, &fullscreenReply->atom);
+  }
+
   // Show window and flush messages
   xcb_map_window(state.connection, state.window);
   xcb_flush(state.connection);
@@ -530,6 +556,14 @@ bool os_window_open(const os_window_config* config) {
 
 bool os_window_is_open(void) {
   return state.connection;
+}
+
+bool os_window_is_visible(void) {
+  return state.visible;
+}
+
+bool os_window_is_focused(void) {
+  return state.focused;
 }
 
 void os_window_get_size(uint32_t* width, uint32_t* height) {
