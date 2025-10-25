@@ -39,4 +39,4 @@
 	url = https://github.com/libsdl-org/SDL.git
 [submodule "plugins/dsp"]
 	path = plugins/dsp
-	url = git@github.com:snowkittykira/dsp.git
+	url = https://github.com/snowkittykira/dsp.git
