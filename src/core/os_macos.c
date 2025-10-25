@@ -18,7 +18,11 @@
 #define msg2(ret, obj, fn, T1, A1, T2, A2) ((ret(*)(id, SEL, T1, T2)) objc_msgSend)(obj, sel_getUid(fn), A1, A2)
 #define msg3(ret, obj, fn, T1, A1, T2, A2, T3, A3) ((ret(*)(id, SEL, T1, T2, T3)) objc_msgSend)(obj, sel_getUid(fn), A1, A2, A3)
 
+#ifdef LOVR_USE_GLFW
 #include "os_glfw.h"
+#elif LOVR_USE_SDL
+#include "os_sdl.h"
+#endif
 
 static struct {
   uint64_t frequency;

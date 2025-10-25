@@ -15,6 +15,8 @@
 
 #ifdef LOVR_USE_GLFW
 #include "os_glfw.h"
+#elif LOVR_USE_SDL
+#include "os_sdl.h"
 #endif
 
 static __declspec(thread) HANDLE timer;
@@ -156,7 +158,7 @@ void os_request_permission(os_permission permission) {
   //
 }
 
-#ifndef LOVR_USE_GLFW
+#if !defined(LOVR_USE_GLFW) && !defined(LOVR_USE_SDL)
 const char* os_get_clipboard_text(void) {
   return NULL; // TODO
 }
@@ -193,7 +195,7 @@ void os_thread_detach(void) {
   }
 }
 
-#ifndef LOVR_USE_GLFW
+#if !defined(LOVR_USE_GLFW) && !defined(LOVR_USE_SDL)
 static os_key convertKey(uint16_t scancode) {
   switch (scancode) {
     case 0x01E: return OS_KEY_A;
