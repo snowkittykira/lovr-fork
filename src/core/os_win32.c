@@ -102,6 +102,8 @@ bool os_init(void) {
 void os_destroy(void) {
 #ifdef LOVR_USE_GLFW
   glfwTerminate();
+#elif LOVR_USE_SDL
+  SDL_Quit();
 #else
   if (state.window) DestroyWindow(state.window);
 #endif
