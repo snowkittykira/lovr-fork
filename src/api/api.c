@@ -722,7 +722,7 @@ int luax_readscale(lua_State* L, int index, vec3 v, int components, const char* 
       vec3_init(v, lua_tovector(L, index));
       return index + 1;
 #endif
-    default: return luax_typeerror(L, index, "number, table, or vector");
+    default: return luax_typeerror(L, index, expected ? expected : "nil, number, table, or vector");
   }
 }
 
@@ -783,7 +783,7 @@ int luax_readquat(lua_State* L, int index, quat q, const char* expected) {
       return index + 1;
     }
 #endif
-    default: return luax_typeerror(L, index, "number, table, or quaternion");
+    default: return luax_typeerror(L, index, expected ? expected : "nil, number, table, or quaternion");
   }
 }
 
@@ -832,7 +832,26 @@ void luax_pushvec3(lua_State* L, float v[3], bool tableArray) {
     lua_setfield(L, -2, "y");
     lua_pushnumber(L, v[2]);
     lua_setfield(L, -2, "z");
-    lua_getmetatable(L, 2);
-    lua_setmetatable(L, -2);
   }
+}
+
+bool luax_isquat(lua_State* L, int index) {
+  if (lua_istable(L, index)) {
+    int len = luax_len(L, index);
+    if (len == 4) {
+      return true;
+    } else if (len == 0) {
+      lua_pushstring(L, "w");
+      lua_gettable(L, index);
+      bool number = lua_type(L, -1) == LUA_TNUMBER;
+      lua_pop(L, 1);
+      return number;
+    }
+  }
+
+#ifdef LOVR_USE_LUAU
+  return lua_type(L, index) == LUA_TQUATERNION;
+#endif
+
+  return false;
 }
