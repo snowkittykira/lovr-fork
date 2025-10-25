@@ -37,7 +37,11 @@ bool os_init(void) {
 }
 
 void os_destroy(void) {
+#ifdef LOVR_USE_GLFW
   glfwTerminate();
+#elif LOVR_USE_SDL
+  SDL_Quit();
+#endif
 }
 
 const char* os_get_name(void) {

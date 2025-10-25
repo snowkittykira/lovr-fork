@@ -62,6 +62,7 @@ void os_destroy(void) {
 #ifdef LOVR_USE_GLFW
   glfwTerminate();
 #elif LOVR_USE_SDL
+  SDL_Quit();
 #else
   free(state.deleteWindow);
   if (state.hiddenCursor) xcb_free_cursor(state.connection, state.hiddenCursor);
