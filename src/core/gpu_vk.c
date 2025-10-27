@@ -4,6 +4,7 @@
 #include <stdatomic.h>
 
 #ifdef LOVR_USE_SDL
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #endif
 
@@ -781,7 +782,7 @@ bool gpu_surface_init(gpu_surface_info* info) {
 
 #if defined(LOVR_USE_SDL)
   if(!SDL_Vulkan_CreateSurface((SDL_Window*) info->sdl.window, state.instance, NULL, &surface->handle)) {
-    //printf("%s\n", SDL_GetError());
+    SDL_Log("%s\n", SDL_GetError());
     return false;
   }
 #elif defined(_WIN32)
@@ -2699,9 +2700,7 @@ bool gpu_init(gpu_config* config) {
       { "VK_EXT_debug_utils", config->debug, &state.extensions.debug },
       { "VK_EXT_swapchain_colorspace", true, &state.extensions.colorspace },
       { "VK_KHR_surface", true, &state.extensions.surface },
-#if defined(LOVR_USE_SDL)
-      { "VK_KHR_xlib_surface", true, &state.extensions.surfaceOS },
-#elif defined(_WIN32)
+#if defined(_WIN32)
       { "VK_KHR_win32_surface", true, &state.extensions.surfaceOS },
 #elif defined(__APPLE__)
       { "VK_EXT_metal_surface", true, &state.extensions.surfaceOS },
@@ -2716,13 +2715,28 @@ bool gpu_init(gpu_config* config) {
     ASSERT(extensionInfo, "Out of memory") goto fail;
     VK(vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, extensionInfo), "vkEnumerateInstanceExtensionProperties") goto fail;
 
+    uint32_t platformExtensionCount = 0;
+    const char* const* platformExtensions = NULL;
+#if defined(LOVR_USE_SDL)
+    // TODO: shouldn't need this? shouldn't SDL_Vulkan_LoadLibrary work?
+    SDL_CreateWindow("", 0, 0, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
+    platformExtensions = SDL_Vulkan_GetInstanceExtensions(&platformExtensionCount);
+    if (!platformExtensions) {
+        SDL_Log("%s\n", SDL_GetError());
+        return false;
+    }
+#endif
+
     uint32_t enabledExtensionCount = 0;
-    const char* enabledExtensions[COUNTOF(extensions)];
+    const char** enabledExtensions = state.config.fnAlloc((COUNTOF(extensions) + platformExtensionCount) * sizeof(const char *));
     for (uint32_t i = 0; i < COUNTOF(extensions); i++) {
       if (extensions[i].shouldEnable && hasExtension(extensionInfo, extensionCount, extensions[i].name)) {
         enabledExtensions[enabledExtensionCount++] = extensions[i].name;
         *extensions[i].flag = true;
       }
+    }
+    for (uint32_t i = 0; i < platformExtensionCount; i++) {
+      enabledExtensions[enabledExtensionCount++] = platformExtensions[i];
     }
 
     config->fnFree(extensionInfo);
@@ -2749,6 +2763,8 @@ bool gpu_init(gpu_config* config) {
     } else {
       VK(vkCreateInstance(&instanceInfo, NULL, &state.instance), "vkCreateInstance") goto fail;
     }
+
+    state.config.fnFree(enabledExtensions);
 
     GPU_FOREACH_INSTANCE(GPU_LOAD_INSTANCE);
 
