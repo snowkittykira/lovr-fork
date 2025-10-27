@@ -226,7 +226,7 @@ bool os_window_open(const os_window_config* config) {
   }
 
   if (!SDL_Init(SDL_INIT_VIDEO)) {
-    printf("SDL initialization failed: %s\n", SDL_GetError());
+    SDL_Log("SDL initialization failed: %s\n", SDL_GetError());
     return false;
   }
 
@@ -245,7 +245,7 @@ bool os_window_open(const os_window_config* config) {
 
   sdlState.window = SDL_CreateWindow(config->title, width, height, window_flags);
   if (!sdlState.window) {
-    printf("SDL window creation failed: %s\n", SDL_GetError());
+    SDL_Log("SDL window creation failed: %s\n", SDL_GetError());
     SDL_Quit();
     return false;
   }

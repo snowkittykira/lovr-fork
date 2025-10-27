@@ -2718,11 +2718,17 @@ bool gpu_init(gpu_config* config) {
     uint32_t platformExtensionCount = 0;
     const char* const* platformExtensions = NULL;
 #if defined(LOVR_USE_SDL)
-    // TODO: shouldn't need this? shouldn't SDL_Vulkan_LoadLibrary work?
-    SDL_CreateWindow("", 0, 0, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+        SDL_Log("SDL_InitSubSystem %s\n", SDL_GetError());
+        return false;
+    }
+    if (!SDL_Vulkan_LoadLibrary(NULL)) {
+        SDL_Log("SDL_Vulkan_LoadLibrary %s\n", SDL_GetError());
+        return false;
+    }
     platformExtensions = SDL_Vulkan_GetInstanceExtensions(&platformExtensionCount);
     if (!platformExtensions) {
-        SDL_Log("%s\n", SDL_GetError());
+        SDL_Log("SDL_Vulkan_GetInstanceExtensions %s\n", SDL_GetError());
         return false;
     }
 #endif
@@ -3282,6 +3288,10 @@ void gpu_destroy(void) {
   if (state.library) dlclose(state.library);
 #endif
   memset(&state, 0, sizeof(state));
+
+#ifdef LOVR_USE_SDL
+  SDL_QuitSubSystem(SDL_INIT_VIDEO);
+#endif
 }
 
 char* gpu_get_error(void) {
