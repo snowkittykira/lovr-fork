@@ -365,20 +365,6 @@ void os_set_mouse_mode(os_mouse_mode mode) {
   SDL_SetWindowMouseGrab(sdlState.window, mode == MOUSE_MODE_GRABBED);
 }
 
-bool os_is_mouse_down(os_mouse_button button) {
-  if (!sdlState.window) {
-    return false;
-  }
-  uint32_t mask = SDL_BUTTON_MASK(button == MOUSE_LEFT ? 1 : 3);
-  uint32_t state = SDL_GetMouseState(NULL, NULL);
-  return state & mask;
-}
-
-bool os_is_key_down(os_key key) {
-  // seems to be unused
-  return false;
-}
-
 uintptr_t os_get_win32_window(void) {
   return 0;
 }
