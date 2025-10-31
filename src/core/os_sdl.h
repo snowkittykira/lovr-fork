@@ -226,7 +226,7 @@ bool os_window_open(const os_window_config* config) {
   }
 
   if (!SDL_Init(SDL_INIT_VIDEO)) {
-    printf("SDL initialization failed: %s\n", SDL_GetError());
+    SDL_Log("SDL initialization failed: %s\n", SDL_GetError());
     return false;
   }
 
@@ -245,7 +245,7 @@ bool os_window_open(const os_window_config* config) {
 
   sdlState.window = SDL_CreateWindow(config->title, width, height, window_flags);
   if (!sdlState.window) {
-    printf("SDL window creation failed: %s\n", SDL_GetError());
+    SDL_Log("SDL window creation failed: %s\n", SDL_GetError());
     SDL_Quit();
     return false;
   }
@@ -363,20 +363,6 @@ void os_set_mouse_mode(os_mouse_mode mode) {
     return;
   }
   SDL_SetWindowMouseGrab(sdlState.window, mode == MOUSE_MODE_GRABBED);
-}
-
-bool os_is_mouse_down(os_mouse_button button) {
-  if (!sdlState.window) {
-    return false;
-  }
-  uint32_t mask = SDL_BUTTON_MASK(button == MOUSE_LEFT ? 1 : 3);
-  uint32_t state = SDL_GetMouseState(NULL, NULL);
-  return state & mask;
-}
-
-bool os_is_key_down(os_key key) {
-  // seems to be unused
-  return false;
 }
 
 uintptr_t os_get_win32_window(void) {
