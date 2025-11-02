@@ -31,12 +31,11 @@ mod lovr_sys {
 
 use glam::{vec3, Mat4};
 use mlua::prelude::*;
+use std::backtrace::Backtrace;
 use std::ffi::CStr;
 
 #[mlua::lua_module]
 fn lovr_rs(lua: &Lua) -> LuaResult<LuaValue> {
-    //let callbacks = Callbacks;
-
     lua.globals()
         .get::<LuaTable>("lovr")?
         .set("run", lua.create_function(lovr_run)?)?;
@@ -44,40 +43,15 @@ fn lovr_rs(lua: &Lua) -> LuaResult<LuaValue> {
     Ok(LuaNil)
 }
 
-use std::cell::RefCell;
-
 fn lovr_run(lua: &Lua, _: ()) -> LuaResult<LuaFunction> {
-    let game = RefCell::new(Game);
-    lua.create_function(move |lua, _: ()| {
-        let mut game_ref = game.borrow_mut();
-        lovr_loop(lua, &mut *game_ref)
-    })
-}
-
-fn lovr_loop<C: LovrCallbacks>(_lua: &Lua, callbacks: &mut C) -> LuaResult<LuaValue> {
-    lovr::system::poll_events();
-
-    while let Some(event) = lovr::event::poll() {
-        match event {
-            Event::Quit { exit_code } => {
-                if !callbacks.quit()? {
-                    return Ok(LuaValue::Number(exit_code.into()))
-                }
-            },
-            Event::KeyPressed { code, scancode, repeat } => {
-                callbacks.key_pressed(code, scancode, repeat)?;
-            }
-            _ => () // TODO: remove
+    let game = Box::new(Game);
+    let mut game_loop = game.run();
+    lua.create_function_mut(move |_lua, _: ()| -> LuaResult<LuaValue> {
+        match game_loop()? {
+            RunCommand::Quit(code) => Ok(LuaValue::Number(code.into())),
+            RunCommand::Continue => Ok(LuaNil),
         }
-    }
-
-    if let Some(mut pass) = lovr::graphics::get_window_pass()? && !callbacks.draw(&mut pass)? {
-        lovr::graphics::submit(&mut [pass])?
-    }
-
-    lovr::graphics::present()?;
-
-    Ok(LuaNil)
+    })
 }
 
 fn lovr_assert(condition: bool) -> LovrResult<()> {
@@ -91,16 +65,20 @@ fn lovr_assert(condition: bool) -> LovrResult<()> {
         } else {
             CStr::from_ptr(ptr).to_string_lossy().into_owned()
         };
-        Err(LovrError(msg))
+        Err(LovrError(msg, Backtrace::force_capture()))
     }
 }
 
 #[derive(Debug)]
-struct LovrError(String);
+struct LovrError(String, Backtrace);
 
 impl From<LovrError> for mlua::Error {
     fn from(err: LovrError) -> Self {
-        mlua::Error::RuntimeError(err.0)
+        let bt = err.1.to_string().lines()
+            .take_while(|line| !line.contains("lovr_rs::lovr_run::{{closure}}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        mlua::Error::RuntimeError(err.0 + "\n\n" + &bt + "\n")
     }
 }
 
@@ -339,4 +317,36 @@ trait LovrCallbacks {
         Ok(false)
     }
 
+    fn run(mut self: Box<Self>) -> impl FnMut() -> LovrResult<RunCommand> {
+        move || -> LovrResult<RunCommand> {
+            lovr::system::poll_events();
+
+            while let Some(event) = lovr::event::poll() {
+                match event {
+                    Event::Quit { exit_code } => {
+                        if !self.quit()? {
+                            return Ok(RunCommand::Quit(exit_code))
+                        }
+                    },
+                    Event::KeyPressed { code, scancode, repeat } => {
+                        self.key_pressed(code, scancode, repeat)?;
+                    }
+                    _ => () // TODO: remove
+                }
+            }
+
+            if let Some(mut pass) = lovr::graphics::get_window_pass()? && !self.draw(&mut pass)? {
+                lovr::graphics::submit(&mut [pass])?
+            }
+
+            lovr::graphics::present()?;
+
+            Ok(RunCommand::Continue)
+        }
+    }
+}
+
+enum RunCommand {
+    Continue,
+    Quit(i32),
 }
