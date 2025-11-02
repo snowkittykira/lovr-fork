@@ -18,6 +18,84 @@ impl LovrCallbacks for Game {
 
 }
 
+// default callbacks
+
+#[allow(unused_variables)] 
+trait LovrCallbacks {
+    fn load(&mut self, arg: &[String]) -> LovrResult<()> { Ok(()) }
+    fn update(&mut self, dt: f64) -> LovrResult<()> { Ok(()) }
+    fn draw(&mut self, pass: &mut Pass) -> LovrResult<bool> { Ok(false) }
+    fn mirror(&mut self, pass: &mut Pass) -> LovrResult<bool> { self.draw(pass) }
+
+    fn quit(&mut self) -> LovrResult<bool> { Ok(false) }
+    fn visible(&mut self, visible: bool, display: DisplayType) -> LovrResult<()> { Ok(()) }
+    fn focus(&mut self, focused: bool, display: DisplayType) -> LovrResult<()> { Ok(()) }
+    fn mount(&mut self, mounted: bool) -> LovrResult<()> { Ok(()) }
+    fn recenter(&mut self) -> LovrResult<()> { Ok(()) }
+    fn models_changed(&mut self) -> LovrResult<()> { Ok(()) }
+    fn resize(&mut self, width: u32, height: u32) -> LovrResult<()> { Ok(()) }
+    fn key_pressed(&mut self, code: Key, scancode: u32, repeat: bool) -> LovrResult<()> { Ok(()) }
+    fn key_released(&mut self, code: Key, scancode: u32) -> LovrResult<()> { Ok(()) }
+    fn text_input(&mut self, utf8: String, codepoint: u32) -> LovrResult<()> { Ok(()) }
+    fn mouse_pressed(&mut self, x: f64, y: f64, button: i32) -> LovrResult<()> { Ok(()) }
+    fn mouse_released(&mut self, x: f64, y: f64, button: i32) -> LovrResult<()> { Ok(()) }
+    fn mouse_moved(&mut self, x: f64, y: f64, dx: f64, dy: f64) -> LovrResult<()> { Ok(()) }
+    fn mouse_wheel_moved(&mut self, x: f64, y: f64) -> LovrResult<()> { Ok(()) }
+    fn thread_error(&mut self, error: String) -> LovrResult<()> { Ok(()) }
+    fn file_changed(&mut self, path: String, action: FileAction, old_path: String) -> LovrResult<()> { Ok(()) }
+    fn permission(&mut self, permission: Permission, granted: bool) -> LovrResult<()> { Ok(()) }
+    fn custom(&mut self) -> LovrResult<()> { Ok(()) }
+
+    fn run(mut self: Box<Self>) -> LovrResult<impl FnMut() -> LovrResult<RunCommand>> {
+        lovr::timer::step();
+        self.load(&[])?;
+        Ok(move || -> LovrResult<RunCommand> {
+            // TODO headset stuff
+            lovr::system::poll_events();
+
+            while let Some(event) = lovr::event::poll() {
+                match event {
+                    Event::Quit { exit_code } => {
+                        if !self.quit()? {
+                            return Ok(RunCommand::Quit(exit_code))
+                        }
+                    },
+                    Event::Visible { visible, display } => self.visible(visible, display)?,
+                    Event::Focus { focused, display } => self.focus(focused, display)?,
+                    Event::Mount { mounted } => self.mount(mounted)?,
+                    Event::Recenter => self.recenter()?,
+                    Event::ModelsChanged => self.models_changed()?,
+                    Event::Resize { width, height } => self.resize(width, height)?,
+                    Event::KeyPressed { code, scancode, repeat } => self.key_pressed(code, scancode, repeat)?,
+                    Event::KeyReleased { code, scancode } => self.key_released(code, scancode)?,
+                    Event::TextInput { utf8, codepoint } => self.text_input(utf8, codepoint)?,
+                    Event::MousePressed { x, y, button } => self.mouse_pressed(x, y, button)?,
+                    Event::MouseReleased { x, y, button } => self.mouse_released(x, y, button)?,
+                    Event::MouseMoved { x, y, dx, dy } => self.mouse_moved(x, y, dx, dy)?,
+                    Event::MouseWheelMoved { x, y } => self.mouse_wheel_moved(x, y)?,
+                    Event::ThreadError { error } => self.thread_error(error)?,
+                    Event::FileChanged { path, action, old_path } => self.file_changed(path, action, old_path)?,
+                    Event::Permission { permission, granted } => self.permission(permission, granted)?,
+                    Event::Custom {} => self.custom()?,
+                }
+            }
+            let dt = lovr::timer::step();
+            self.update(dt)?;
+            if let Some(mut pass) = lovr::graphics::get_window_pass()? && !self.mirror(&mut pass)? {
+                lovr::graphics::submit(&mut [pass])?
+            }
+            lovr::graphics::present()?;
+
+            Ok(RunCommand::Continue)
+        })
+    }
+}
+
+enum RunCommand {
+    Continue,
+    Quit(i32),
+}
+
 // bindings
 
 mod lovr_sys {
@@ -45,7 +123,7 @@ fn lovr_rs(lua: &Lua) -> LuaResult<LuaValue> {
 
 fn lovr_run(lua: &Lua, _: ()) -> LuaResult<LuaFunction> {
     let game = Box::new(Game);
-    let mut game_loop = game.run();
+    let mut game_loop = game.run()?;
     lua.create_function_mut(move |_lua, _: ()| -> LuaResult<LuaValue> {
         match game_loop()? {
             RunCommand::Quit(code) => Ok(LuaValue::Number(code.into())),
@@ -70,21 +148,21 @@ fn lovr_assert(condition: bool) -> LovrResult<()> {
 }
 
 #[derive(Debug)]
-struct LovrError(String, Backtrace);
+pub struct LovrError(String, Backtrace);
 
 impl From<LovrError> for mlua::Error {
     fn from(err: LovrError) -> Self {
         let bt = err.1.to_string().lines()
-            .take_while(|line| !line.contains("lovr_rs::lovr_run::{{closure}}"))
+            .take_while(|line| !line.contains(": lovr_rs::lovr_run::{{closure}}"))
             .collect::<Vec<_>>()
             .join("\n");
         mlua::Error::RuntimeError(err.0 + "\n\n" + &bt + "\n")
     }
 }
 
-type LovrResult<T> = Result<T, LovrError>;
+pub type LovrResult<T> = Result<T, LovrError>;
 
-mod lovr {
+pub mod lovr {
     use super::*;
 
     pub mod event {
@@ -93,26 +171,28 @@ mod lovr {
         pub fn poll() -> Option<Event> {
             unsafe {
                 let mut event: lovr_sys::Event = std::mem::zeroed();
-                if lovr_sys::lovrEventPoll(&mut event) {
+                while lovr_sys::lovrEventPoll(&mut event) {
                     match event.type_ {
-                        lovr_sys::EventType_EVENT_QUIT => Some(Event::Quit {
-                            exit_code: event.data.quit.exitCode,
-                        }),
-                        lovr_sys::EventType_EVENT_KEYPRESSED => 
+
+                        lovr_sys::EventType_EVENT_QUIT => {
+                            return Some(Event::Quit { exit_code: event.data.quit.exitCode, })
+                        }
+
+                        lovr_sys::EventType_EVENT_KEYPRESSED => {
                             if let Some(code) = keycode_to_key(event.data.key.code) {
-                                Some(Event::KeyPressed {
+                                return Some(Event::KeyPressed {
                                     code,
                                     scancode: event.data.key.scancode,
                                     repeat: event.data.key.repeat,
                                 })
-                            } else {
-                                Some(Event::Other) // TODO: what to do here?
                             }
-                        _ => Some(Event::Other) // TODO: handle other events
+                        }
+
+
+                        _ => ()
                     }
-                } else {
-                    None
                 }
+                None
             }
         }
 
@@ -155,6 +235,30 @@ mod lovr {
         }
     }
 
+    pub mod headset {
+        use super::*;
+
+        pub fn is_active() -> bool {
+            unsafe{
+                lovr_sys::lovrHeadsetIsActive()
+            }
+        }
+
+        pub fn update() -> LovrResult<f64> {
+            unsafe{
+                let mut dt = 0.;
+                lovr_assert(lovr_sys::lovrHeadsetUpdate(&mut dt))?;
+                Ok(dt)
+            }
+        }
+
+        pub fn poll_events() -> LovrResult<()> {
+            unsafe {
+                lovr_assert(lovr_sys::lovrHeadsetPollEvents())
+            }
+        }
+    }
+
     pub mod system {
         use super::*;
 
@@ -164,9 +268,19 @@ mod lovr {
             }
         }
     }
+
+    pub mod timer {
+        use super::*;
+
+        pub fn step() -> f64 {
+            unsafe {
+                lovr_sys::lovrTimerStep()
+            }
+        }
+    }
 }
 
-struct Pass {
+pub struct Pass {
     ptr: *mut lovr_sys::Pass
 }
 
@@ -178,10 +292,32 @@ impl Pass {
     }
 }
 
+// events
+
 pub enum Event {
     Quit { exit_code: i32 },
+    Visible { visible: bool, display: DisplayType },
+    Focus { focused: bool, display: DisplayType },
+    Mount { mounted: bool },
+    Recenter,
+    ModelsChanged,
+    Resize { width: u32, height: u32 },
     KeyPressed { code: Key, scancode: u32, repeat: bool },
-    Other // TODO remove
+    KeyReleased { code: Key, scancode: u32 },
+    TextInput { utf8: String, codepoint: u32 },
+    MousePressed { x: f64, y: f64, button: i32 },
+    MouseReleased { x: f64, y: f64, button: i32 },
+    MouseMoved { x: f64, y: f64, dx: f64, dy: f64 },
+    MouseWheelMoved { x: f64, y: f64 },
+    ThreadError { error: String }, // TODO: thread parameter
+    FileChanged { path: String, action: FileAction, old_path: String },
+    Permission { permission: Permission, granted: bool },
+    Custom {}, // TODO: variant parameter?
+}
+
+pub enum DisplayType {
+    Headset,
+    Window,
 }
 
 pub enum Key {
@@ -193,6 +329,17 @@ pub enum Key {
     Kp0, Kp1, Kp2, Kp3, Kp4, Kp5, Kp6, Kp7, Kp8, Kp9, KpDecimal, KpDivide, KpMultiply, KpSubtract,
     KpAdd, KpEnter, KpEquals, LeftControl, LeftShift, LeftAlt, LeftOs, RightControl, RightShift,
     RightAlt, RightOs, CapsLock, ScrollLock, NumLock
+}
+
+pub enum FileAction {
+    Create,
+    Delete,
+    Modify,
+    Rename,
+}
+
+pub enum Permission {
+    AudioCapture
 }
 
 fn keycode_to_key(code: u32) -> Option<Key> {
@@ -301,52 +448,4 @@ fn keycode_to_key(code: u32) -> Option<Key> {
         lovr_sys::os_key_OS_KEY_NUM_LOCK        => Some(Key::NumLock),
         _ => None
     }
-}
-
-#[allow(unused_variables)] 
-trait LovrCallbacks {
-    fn draw(&mut self, pass: &mut Pass) -> LovrResult<bool> {
-        Ok(false)
-    }
-
-    fn key_pressed(&mut self, code: Key, scancode: u32, repeat: bool) -> LovrResult<()> {
-        Ok(())
-    }
-
-    fn quit(&mut self) -> LovrResult<bool> {
-        Ok(false)
-    }
-
-    fn run(mut self: Box<Self>) -> impl FnMut() -> LovrResult<RunCommand> {
-        move || -> LovrResult<RunCommand> {
-            lovr::system::poll_events();
-
-            while let Some(event) = lovr::event::poll() {
-                match event {
-                    Event::Quit { exit_code } => {
-                        if !self.quit()? {
-                            return Ok(RunCommand::Quit(exit_code))
-                        }
-                    },
-                    Event::KeyPressed { code, scancode, repeat } => {
-                        self.key_pressed(code, scancode, repeat)?;
-                    }
-                    _ => () // TODO: remove
-                }
-            }
-
-            if let Some(mut pass) = lovr::graphics::get_window_pass()? && !self.draw(&mut pass)? {
-                lovr::graphics::submit(&mut [pass])?
-            }
-
-            lovr::graphics::present()?;
-
-            Ok(RunCommand::Continue)
-        }
-    }
-}
-
-enum RunCommand {
-    Continue,
-    Quit(i32),
 }
