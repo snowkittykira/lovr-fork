@@ -1,3 +1,25 @@
+// game
+
+struct Game;
+
+impl LovrCallbacks for Game {
+
+    fn draw(&mut self, pass: &mut Pass) -> LovrResult<bool> {
+        pass.sphere(Mat4::from_translation(vec3(0., 0., -2.)), 16, 16)?;
+        Ok(false)
+    }
+
+    fn key_pressed(&mut self, code: Key, _scancode: u32, _repeat: bool) -> LovrResult<()> {
+        if let Key::Escape = code {
+            lovr::event::quit(0)
+        }
+        Ok(())
+    }
+
+}
+
+// bindings
+
 mod lovr_sys {
     #![allow(non_upper_case_globals)]
     #![allow(non_camel_case_types)]
@@ -22,35 +44,34 @@ fn lovr_rs(lua: &Lua) -> LuaResult<LuaValue> {
     Ok(LuaNil)
 }
 
+use std::cell::RefCell;
+
 fn lovr_run(lua: &Lua, _: ()) -> LuaResult<LuaFunction> {
-    lua.create_function(lovr_loop)
+    let game = RefCell::new(Game);
+    lua.create_function(move |lua, _: ()| {
+        let mut game_ref = game.borrow_mut();
+        lovr_loop(lua, &mut *game_ref)
+    })
 }
 
-#[allow(clippy::collapsible_match)]
-#[allow(clippy::single_match)]
-fn lovr_loop(_lua: &Lua, _: ()) -> LuaResult<LuaValue> {
+fn lovr_loop<C: LovrCallbacks>(_lua: &Lua, callbacks: &mut C) -> LuaResult<LuaValue> {
     lovr::system::poll_events();
 
     while let Some(event) = lovr::event::poll() {
         match event {
             Event::Quit { exit_code } => {
-                // TODO call callback
-                return Ok(LuaValue::Number(exit_code.into()))
-            },
-            Event::KeyPressed { code, scancode: _, repeat: _ } => {
-                // TODO call callback
-                match code {
-                    Key::Escape => lovr::event::quit(0),
-                    _ => ()
+                if !callbacks.quit()? {
+                    return Ok(LuaValue::Number(exit_code.into()))
                 }
+            },
+            Event::KeyPressed { code, scancode, repeat } => {
+                callbacks.key_pressed(code, scancode, repeat)?;
             }
             _ => () // TODO: remove
         }
     }
 
-    if let Some(mut pass) = lovr::graphics::get_window_pass()? {
-        pass.sphere(Mat4::from_translation(vec3(0., 0., -2.)), 16, 16)?;
-
+    if let Some(mut pass) = lovr::graphics::get_window_pass()? && !callbacks.draw(&mut pass)? {
         lovr::graphics::submit(&mut [pass])?
     }
 
@@ -75,7 +96,6 @@ fn lovr_assert(condition: bool) -> LovrResult<()> {
 }
 
 #[derive(Debug)]
-#[must_use]
 struct LovrError(String);
 
 impl From<LovrError> for mlua::Error {
@@ -305,12 +325,18 @@ fn keycode_to_key(code: u32) -> Option<Key> {
     }
 }
 
-//#[allow(unused_variables)] 
-//trait LovrCallbacks {
-//    fn keypressed(code: Key, scancode: u32, repeat: bool) -> LovrResult<()> {
-//        Ok(())
-//    }
-//    fn quit() -> LovrResult<bool> {
-//        Ok(false)
-//    }
-//}
+#[allow(unused_variables)] 
+trait LovrCallbacks {
+    fn draw(&mut self, pass: &mut Pass) -> LovrResult<bool> {
+        Ok(false)
+    }
+
+    fn key_pressed(&mut self, code: Key, scancode: u32, repeat: bool) -> LovrResult<()> {
+        Ok(())
+    }
+
+    fn quit(&mut self) -> LovrResult<bool> {
+        Ok(false)
+    }
+
+}
