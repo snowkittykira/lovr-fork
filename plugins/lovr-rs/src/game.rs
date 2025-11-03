@@ -22,4 +22,3 @@ impl lovr::Callbacks for Game {
     }
 
 }
-

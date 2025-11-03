@@ -1,12 +1,7 @@
 use std::backtrace::Backtrace;
 use std::ffi::CStr;
 
-use std::result::Result as StdResult;
-
 use crate::lovr_sys;
-
-mod callbacks;
-pub use callbacks::{Callbacks, RunCommand};
 
 pub mod event;
 pub mod graphics;
@@ -14,9 +9,12 @@ pub mod headset;
 pub mod system;
 pub mod timer;
 
+mod callbacks;
+pub use callbacks::{Callbacks, RunCommand};
+
 mod entry;
 
-pub type Result<T> = StdResult<T, LovrError>;
+pub type Result<T> = std::result::Result<T, LovrError>;
 
 #[derive(Debug)]
 pub struct LovrError(String, Backtrace);
