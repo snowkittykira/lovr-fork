@@ -1,4 +1,4 @@
-mod entry;
+pub mod lovr;
+pub mod lovr_sys;
+
 mod game;
-mod lovr;
-mod lovr_sys;

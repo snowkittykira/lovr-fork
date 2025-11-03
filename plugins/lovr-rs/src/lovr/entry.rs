@@ -3,7 +3,7 @@
 use mlua::prelude::*;
 use crate::game::Game;
 use crate::lovr;
-use crate::lovr::LovrCallbacks;
+use crate::lovr::Callbacks;
 
 #[mlua::lua_module]
 fn lovr_rs(lua: &Lua) -> LuaResult<LuaValue> {
